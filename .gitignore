@@ -1,0 +1,8 @@
+# cmake build directory
+build
+# Generated waveform
+*.fst
+*.vcd
+# Generated firmware
+*.bin
+*.hex

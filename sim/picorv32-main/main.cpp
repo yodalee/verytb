@@ -82,25 +82,27 @@ public:
 		tfp.open("dump.fst");
 
 		dut.resetn = 1;
-		Eval();
-		Eval();
+		for (unsigned i = 0; i < 5; ++i) { Eval(); }
 		dut.resetn = 0;
-		Eval();
-		Eval();
+		for (unsigned i = 0; i < 3; ++i) { Eval(); }
 		dut.resetn = 1;
-		Eval();
-		Eval();
+		for (unsigned i = 0; i < 5; ++i) { Eval(); }
 	}
 
 	~Vpicorv32Wrap() {
 		tfp.close();
 	}
 
+	void OptionalPreEval() {
+		dut.clk = 1;
+		dut.eval();
+	}
+
 	void Eval() {
-		dut.clk = 0;
+		dut.clk = 1;
 		dut.eval();
 		tfp.dump(timestamp++);
-		dut.clk = 1;
+		dut.clk = 0;
 		dut.eval();
 		tfp.dump(timestamp++);
 	}
@@ -110,12 +112,16 @@ public:
 
 		// Only Valid/Ready input and signal out are put here
 		dut.mem_axi_rvalid = r->has_value();
-		if (dut.mem_axi_rvalid and dut.mem_axi_rready) {
-			cout << "Get R" << endl;
+		if (dut.mem_axi_rvalid) {
 			dut.mem_axi_rdata = r->value().data;
-			r->reset();
 		}
 		dut.mem_axi_bvalid = b->has_value();
+
+		OptionalPreEval();
+
+		if (dut.mem_axi_rvalid and dut.mem_axi_rready) {
+			r->reset();
+		}
 		if (dut.mem_axi_bvalid and dut.mem_axi_bready) {
 			b->reset();
 		}
@@ -152,7 +158,7 @@ struct AxiMemory {
 	optional<r_s>* r;
 	optional<w_s>* w;
 	optional<b_s>* b;
-	vector<unsigned> memory_space;
+	vector<uint32_t> memory_space;
 
 private:
 	deque<ar_s> ar_q;
@@ -207,8 +213,8 @@ public:
 	}
 };
 
-vector<unsigned> ReadBin(const string& filename) {
-	vector<unsigned> data;
+vector<uint32_t> ReadBin(const string& filename) {
+	vector<uint32_t> data;
 	ifstream file(filename, ios::binary | ios::ate);
 	if (not file) {
 		cerr << "Failed to open file: " << filename << endl;
@@ -216,19 +222,22 @@ vector<unsigned> ReadBin(const string& filename) {
 	}
 
 	streamsize size = file.tellg();
-	if (size % sizeof(unsigned) != 0) {
+	if (size % sizeof(uint32_t) != 0) {
 		cerr << "File size is not aligned to 4 bytes." << endl;
 		abort();
 	}
 
 	file.seekg(0, ios::beg);
-	size_t count = size / sizeof(unsigned);
-	data.resize(count);
+	data.resize(size / sizeof(uint32_t));
 
 	if (not file.read(reinterpret_cast<char *>(data.data()), size)) {
 		cerr << "Failed to read data from file." << endl;
 		abort();
 	}
+
+	// for (uint32_t& word: data) {
+	// 	word = __builtin_bswap32(word);
+	// }
 
 	return data;
 }

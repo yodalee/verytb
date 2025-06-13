@@ -1,7 +1,8 @@
 #!/bin/bash
 
 function Verilate() {
-	verilator --cc picorv32.v --Mdir Vpicorv32_axi --trace-fst --top-module picorv32_axi -CFLAGS "-mbmi2"
+	verilator --cc picorv32.v --Mdir Vpicorv32_axi --trace-fst --top-module picorv32_axi -CFLAGS "-mbmi2" \
+		-pvalue+ENABLE_IRQ=1 -pvalue+ENABLE_DIV=1 -pvalue+ENABLE_TRACE=1 -pvalue+ENABLE_MUL=1
 	pushd Vpicorv32_axi
 	make -j -f Vpicorv32_axi.mk
 	popd

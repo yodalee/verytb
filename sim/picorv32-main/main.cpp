@@ -66,7 +66,7 @@ struct Vpicorv32Wrap {
 	optional<r_s>* r;
 	optional<w_s>* w;
 	optional<b_s>* b;
-	unsigned *irq;
+	uint32_t *irq;
 
 private:
 	VerilatedContext ctx;
@@ -110,12 +110,13 @@ public:
 	void Pre() {
 		// better to use RAII to manage
 
-		// Only Valid/Ready input and signal out are put here
+		// Only Valid/Ready & Signal input and signal out are put here
 		dut.mem_axi_rvalid = r->has_value();
 		if (dut.mem_axi_rvalid) {
 			dut.mem_axi_rdata = r->value().data;
 		}
 		dut.mem_axi_bvalid = b->has_value();
+		dut.irq = *irq;
 
 		OptionalPreEval();
 
@@ -140,7 +141,6 @@ public:
 		dut.mem_axi_wready = wready;
 		Eval();
 		if (arvalid and arready) {
-			cout << "Send AR" << endl;
 			*ar = {dut.mem_axi_arprot, dut.mem_axi_araddr};
 		}
 		if (awvalid and awready) {
@@ -213,6 +213,18 @@ public:
 	}
 };
 
+struct IrqDriver {
+	uint32_t *irq;
+	void Main() {
+		const bool irq4 = counter == 0xffffu;
+		const bool irq5 = (counter>>12) == 0xfu;
+		*irq = (unsigned(irq4) << 4) | (unsigned(irq5) << 5);
+		++counter;
+	}
+private:
+	uint16_t counter = 0;
+};
+
 vector<uint32_t> ReadBin(const string& filename) {
 	vector<uint32_t> data;
 	ifstream file(filename, ios::binary | ios::ate);
@@ -235,10 +247,6 @@ vector<uint32_t> ReadBin(const string& filename) {
 		abort();
 	}
 
-	// for (uint32_t& word: data) {
-	// 	word = __builtin_bswap32(word);
-	// }
-
 	return data;
 }
 
@@ -249,11 +257,12 @@ int main() {
 	optional<r_s> r;
 	optional<w_s> w;
 	optional<b_s> b;
-	unsigned irq;
+	uint32_t irq;
 
 	// Module
 	Vpicorv32Wrap dut;
 	AxiMemory axi;
+	IrqDriver irq_driver;
 	axi.memory_space = ReadBin("firmware.bin");
 
 	// Connect
@@ -269,9 +278,12 @@ int main() {
 	axi.r = &r;
 	axi.w = &w;
 	axi.b = &b;
+	
+	irq_driver.irq = &irq;
 
 	// main simulation kernel
-	for (unsigned i = 0; i < 600; ++i) {
+	for (unsigned i = 0; i < 700000; ++i) {
+		irq_driver.Main();
 		axi.HandleInputAndExec();
 		dut.Pre();
 

@@ -4,6 +4,7 @@
 // C++ standard library headers
 #include <deque>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -93,18 +94,13 @@ public:
 		tfp.close();
 	}
 
-	void OptionalPreEval() {
-		dut.clk = 1;
-		dut.eval();
-	}
-
 	void Eval() {
-		dut.clk = 1;
-		dut.eval();
 		tfp.dump(timestamp++);
 		dut.clk = 0;
 		dut.eval();
 		tfp.dump(timestamp++);
+		dut.clk = 1;
+		dut.eval();
 	}
 
 	void Pre() {
@@ -118,7 +114,7 @@ public:
 		dut.mem_axi_bvalid = b->has_value();
 		dut.irq = *irq;
 
-		OptionalPreEval();
+		dut.eval();
 
 		if (dut.mem_axi_rvalid and dut.mem_axi_rready) {
 			r->reset();
@@ -159,6 +155,7 @@ struct AxiMemory {
 	optional<w_s>* w;
 	optional<b_s>* b;
 	vector<uint32_t> memory_space;
+	bool simulation_passed = false;
 
 private:
 	deque<ar_s> ar_q;
@@ -189,12 +186,20 @@ public:
 		if (not aw_q.empty() and not w_q.empty() and b_q.size() < 16) {
 			auto& aw_data = aw_q.front();
 			auto& w_data = w_q.front();
+			if (aw_data.addr == 0x10000000u) {
+				const char c = char(w_data.data);
+				cout << c;
+			} else if (aw_data.addr == 0x20000000u) {
+				cout << "Simulation passed" << endl;
+				simulation_passed = true;
+			} else {
+				uint32_t& dst = memory_space[aw_data.addr / 4];
+				uint32_t src = w_data.data;
+				uint32_t mask;
+				BitMaskToByteMask(mask, w_data.strb);
+				dst = (src & mask) | (dst & ~mask);
+			}
 
-			uint32_t& dst = memory_space[aw_data.addr / 4];
-			uint32_t src = w_data.data;
-			uint32_t mask;
-			BitMaskToByteMask(mask, w_data.strb);
-			dst = (src & mask) | (dst & ~mask);
 
 			b_q.emplace_back();
 			aw_q.pop_front();
@@ -209,15 +214,15 @@ public:
 
 	void HandleOutput() {
 		QueueToOptional(r_q, *r);
-		QueueToOptional(w_q, *w);
+		QueueToOptional(b_q, *b);
 	}
 };
 
 struct IrqDriver {
 	uint32_t *irq;
 	void Main() {
-		const bool irq4 = counter == 0xffffu;
-		const bool irq5 = (counter>>12) == 0xfu;
+		const bool irq4 = (counter & 0xfffu) == 0xfffu;
+		const bool irq5 = counter == 0xffffu;
 		*irq = (unsigned(irq4) << 4) | (unsigned(irq5) << 5);
 		++counter;
 	}
@@ -264,6 +269,7 @@ int main() {
 	AxiMemory axi;
 	IrqDriver irq_driver;
 	axi.memory_space = ReadBin("firmware.bin");
+	axi.memory_space.resize(1<<16); // 1MB
 
 	// Connect
 	dut.ar = &ar;
@@ -278,11 +284,11 @@ int main() {
 	axi.r = &r;
 	axi.w = &w;
 	axi.b = &b;
-	
+
 	irq_driver.irq = &irq;
 
 	// main simulation kernel
-	for (unsigned i = 0; i < 700000; ++i) {
+	for (unsigned i = 0; i < 1000000 and not axi.simulation_passed; ++i) {
 		irq_driver.Main();
 		axi.HandleInputAndExec();
 		dut.Pre();

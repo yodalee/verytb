@@ -4,8 +4,12 @@ project(verytb)
 # setup
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
-find_package(spdlog REQUIRED)
 find_package(GTest REQUIRED)
+# find_package(spdlog REQUIRED)
+
+# I still want assertion with RelWithDebInfo
+string(REPLACE "-DNDEBUG" "" CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
+string(REPLACE "-DNDEBUG" "" CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO}")
 
 # find all necessary files
 file(GLOB_RECURSE LIB_FILES "*.cpp")
@@ -19,7 +23,7 @@ include_directories(${CMAKE_SOURCE_DIR})
 
 # build the library
 add_library(verytb STATIC ${LIB_FILES})
-target_link_libraries(verytb PUBLIC spdlog::spdlog)
+target_link_libraries(verytb PRIVATE gmp)
 set(COMMON_LIBS verytb)
 
 # build the tests

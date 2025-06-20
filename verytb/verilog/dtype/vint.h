@@ -73,6 +73,7 @@ public:
 
 	//////////////////////
 	// extra constructors (implemented by assign())
+	// UT: vint_ctor
 	//////////////////////
 	vint& assign(stype rhs) {
 		v[0] = rhs;
@@ -88,11 +89,17 @@ public:
 		return *this;
 	}
 
+	// TODO: UT
 	void assign(const std::vector<uint64_t>& rhs) {
 		const unsigned sz = rhs.size();
 		assert(sz < num_word);
 		std::copy_n(rhs.begin(), sz, v);
-		std::fill(v.begin() + sz, v.end(), 0);
+		stype extension_value = (
+			is_signed and sz != 0 and bool(rhs.back() >> (bit_per_word-1u)) ?
+			stype(-1) :
+			stype(0)
+		);
+		std::fill(v.begin() + sz, v.end(), extension_value);
 		ClearUnusedBits();
 	}
 
@@ -119,6 +126,89 @@ public:
 	explicit vint(const std::vector<uint64_t>& rhs) { assign(rhs); }
 	explicit vint(const std::string& s, unsigned base) { assign(std::string_view(s), base); }
 	vint& operator=(stype rhs) { assign(rhs); return *this; }
+
+	//////////////////////
+	// unary
+	// UT: vint_unary
+	//////////////////////
+	// TODO: UT
+	vint& Flip() {
+		for (auto& x : v) {
+			x = ~x;
+		}
+		ClearUnusedBits();
+		return *this;
+	}
+
+	vint operator~() const {
+		vint ret = *this;
+		return ret.Flip();
+	}
+
+	// TODO: UT
+	vint& Negate() {
+		if constexpr (num_word == 1) {
+			v[0] = -v[0];
+		} else {
+			detail::twos_complement64(v[0], num_word);
+		}
+		ClearUnusedBits();
+		return *this;
+	}
+
+	vint operator-() const const {
+		vint ret = *this;
+		return ret.Negate();
+	}
+
+	// TODO: UT
+	bool operator!() const {
+		for (auto &x: v) {
+			if (x) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	// TODO: UT
+	explicit operator bool() const {
+		for (auto &x: v) {
+			if (x) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	// TODO: UT
+	bool ReduceXor() const {
+		uint64_t ret = 0;
+		for (auto &x: v) {
+			ret ^= v;
+		}
+		return bool(detail::popcount64(ret) & 1);
+	}
+
+	bool ReduceOr() const {
+		return operator bool()();
+	}
+
+	// TODO: UT
+	bool ReduceAnd() const {
+		if (v[num_word-1] != used_mask) {
+			return false;
+		}
+		if constexpr (is_multi_word) {
+			for (unsigned i = 0; i < num_word-1; ++i) {
+				if (v[i] != uin64_t(-1)) {
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+
 
 	//////////////////////
 	// comparison
@@ -310,50 +400,6 @@ public:
 		v[0] ^= rhs;
 		ClearUnusedBits();
 		return *this;
-	}
-
-	//////////////////////
-	// unary
-	//////////////////////
-	// TODO: and/or/xor reduction
-	vint& Flip() {
-		for (unsigned i = 0; i < num_word; ++i) {
-			v[i] = ~v[i];
-		}
-		ClearUnusedBits();
-		return *this;
-	}
-
-	vint operator~() const {
-		vint ret = *this;
-		return ret.Flip();
-	}
-
-	vint& Negate() {
-		if constexpr (num_word == 1) {
-			v[0] = -v[0];
-		} else {
-			unsigned char carry = 1;
-			for (unsigned i = 0; i < num_word; ++i) {
-				carry = detail::addcarry64(v[i], stype(~v[i]), stype(0), carry);
-			}
-		}
-		ClearUnusedBits();
-		return *this;
-	}
-
-	vint operator-() const {
-		vint ret = *this;
-		return ret.Negate();
-	}
-
-	explicit operator bool() {
-		for (auto &x: v) {
-			if (x) {
-				return true;
-			}
-		}
-		return false;
 	}
 
 	// explicit cast

@@ -78,7 +78,19 @@ inline unsigned char subborrow64(uint64_t &out, uint64_t x, uint64_t y, unsigned
 	return _subborrow_u64(carry_in, x, y, reinterpret_cast<unsigned long long*>(&out));
 }
 
-// This is not necessary a public API, but I put this here for testin
+inline unsigned popcount64(uint64_t v) {
+	// Note: Impelemtnation-defined, modify me when necessary
+	return __builtin_popcountll(v);
+}
+
+inline void twos_complement64(uint64_t* v, unsigned num_word) {
+	unsigned char carry = 1;
+	for (unsigned i = 0; i < num_word; ++i) {
+		carry = detail::addcarry64(v[i], uint64_t(~v[i]), uint64_t(0), carry);
+	}
+}
+
+// This is not necessary a public API, but I put this here for testing
 std::string SanitizeStringInteger_(const std::string_view s);
 bool ParseStringAsU64(uint64_t* ptr, unsigned num_bit, unsigned base, const std::string_view s);
 

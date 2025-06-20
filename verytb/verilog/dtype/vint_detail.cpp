@@ -57,13 +57,7 @@ bool ParseStringAsU64(uint64_t* ptr, unsigned num_bit, unsigned base, const stri
 	mpz_clear(value);
 
 	if (is_negative) {
-		unsigned carry = 1u;
-		for (unsigned i = 0; i < num_word; ++i) {
-			ptr[i] = (~ptr[i]) + carry;
-			if (ptr[i] != 0u) {
-				carry = 0u;
-			}
-		}
+		twos_complement64(ptr, num_word);
 	}
 
 	return true;

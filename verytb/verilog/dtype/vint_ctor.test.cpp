@@ -189,7 +189,6 @@ TEST(vint_ctor, assign_sint) {
 // Assign string to vints
 // Note: more testcases using internal API are in vint_detail
 ///////////////////////////
-
 template<template<unsigned> class IntTmpl>
 void StringAssignTemplate() {
 	IntTmpl<1> v1;
@@ -252,4 +251,51 @@ TEST(vint_ctor, assign_uint_str) {
 
 TEST(vint_ctor, assign_sint_str) {
 	StringAssignTemplate<vsint>();
+}
+
+///////////////////////////
+// Assign vector to vints
+///////////////////////////
+template<template<unsigned> class IntTmpl>
+void VectorAssignTemplate() {
+	IntTmpl<1> v1;
+	IntTmpl<63> v63;
+	IntTmpl<64> v64;
+	IntTmpl<65> v65;
+	v1.assign({1234});
+	EXPECT_EQ(v1.v[0], 0);
+	v1.assign({99});
+	EXPECT_EQ(v1.v[0], 1);
+
+	v63.assign({0});
+	EXPECT_EQ(v63.v[0], 0);
+	v63.assign({1});
+	EXPECT_EQ(v63.v[0], 1);
+	v63.assign({-4llu});
+	EXPECT_EQ(v63.v[0], -4llu<<1>>1);
+
+	v64.assign({0});
+	EXPECT_EQ(v64.v[0], 0);
+	v64.assign({1});
+	EXPECT_EQ(v64.v[0], 1);
+	v64.assign({-4llu});
+	EXPECT_EQ(v64.v[0], -4llu);
+
+	v65.assign({0});
+	EXPECT_EQ(v65.v[0], 0);
+	EXPECT_EQ(v65.v[1], 0);
+	v65.assign({1});
+	EXPECT_EQ(v65.v[0], 1);
+	EXPECT_EQ(v65.v[1], 0);
+	v65.assign({1234, 0xff}); // NOTE: 1234 is LSB
+	EXPECT_EQ(v65.v[0], 1234);
+	EXPECT_EQ(v65.v[1], 1);
+}
+
+TEST(vint_ctor, assign_uint_vec) {
+	VectorAssignTemplate<vuint>();
+}
+
+TEST(vint_ctor, assign_sint_vec) {
+	VectorAssignTemplate<vsint>();
 }

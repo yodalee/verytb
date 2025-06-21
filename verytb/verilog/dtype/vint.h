@@ -75,7 +75,8 @@ public:
 	// extra constructors (implemented by assign())
 	// UT: vint_ctor
 	//////////////////////
-	vint& assign(stype rhs) {
+private:
+	vint& assign_int(stype rhs) {
 		v[0] = rhs;
 		if constexpr (is_multi_word) {
 			stype extension_value = (
@@ -89,17 +90,31 @@ public:
 		return *this;
 	}
 
-	// TODO: UT
+public:
+	// enumerate all native types, so this will always be the perfect match
+	// for overload resolution
+	void assign(bool rhs) { assign_int(rhs); }
+	void assign(unsigned char rhs) { assign_int(rhs); }
+	void assign(unsigned short rhs) { assign_int(rhs); }
+	void assign(unsigned rhs) { assign_int(rhs); }
+	void assign(unsigned long rhs) { assign_int(rhs); }
+	void assign(unsigned long long rhs) { assign_int(rhs); }
+	void assign(char rhs) { assign_int(rhs); }
+	void assign(short rhs) { assign_int(rhs); }
+	void assign(int rhs) { assign_int(rhs); }
+	void assign(long rhs) { assign_int(rhs); }
+	void assign(long long rhs) { assign_int(rhs); }
+
 	void assign(const std::vector<uint64_t>& rhs) {
 		const unsigned sz = rhs.size();
-		assert(sz < num_word);
+		assert(sz <= num_word);
 		std::copy_n(rhs.begin(), sz, v);
 		stype extension_value = (
 			is_signed and sz != 0 and bool(rhs.back() >> (bit_per_word-1u)) ?
 			stype(-1) :
 			stype(0)
 		);
-		std::fill(v.begin() + sz, v.end(), extension_value);
+		std::fill(std::begin(v) + sz, std::end(v), extension_value);
 		ClearUnusedBits();
 	}
 
@@ -156,7 +171,7 @@ public:
 		return *this;
 	}
 
-	vint operator-() const const {
+	vint operator-() const {
 		vint ret = *this;
 		return ret.Negate();
 	}
@@ -201,7 +216,7 @@ public:
 		}
 		if constexpr (is_multi_word) {
 			for (unsigned i = 0; i < num_word-1; ++i) {
-				if (v[i] != uin64_t(-1)) {
+				if (v[i] != uint64_t(-1)) {
 					return false;
 				}
 			}

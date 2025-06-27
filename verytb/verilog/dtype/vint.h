@@ -136,7 +136,17 @@ public:
 	//////////////////////
 	// extra constructors (delagate)
 	//////////////////////
-	explicit vint(const stype rhs) { assign(rhs); }
+	explicit vint(bool rhs) { assign_int(rhs); }
+	explicit vint(unsigned char rhs) { assign_int(rhs); }
+	explicit vint(unsigned short rhs) { assign_int(rhs); }
+	explicit vint(unsigned rhs) { assign_int(rhs); }
+	explicit vint(unsigned long rhs) { assign_int(rhs); }
+	explicit vint(unsigned long long rhs) { assign_int(rhs); }
+	explicit vint(char rhs) { assign_int(rhs); }
+	explicit vint(short rhs) { assign_int(rhs); }
+	explicit vint(int rhs) { assign_int(rhs); }
+	explicit vint(long rhs) { assign_int(rhs); }
+	explicit vint(long long rhs) { assign_int(rhs); }
 	explicit vint(const char* s, unsigned base) { assign(std::string_view(s), base); }
 	explicit vint(const std::vector<uint64_t>& rhs) { assign(rhs); }
 	explicit vint(const std::string& s, unsigned base) { assign(std::string_view(s), base); }
@@ -146,7 +156,6 @@ public:
 	// unary
 	// UT: vint_unary
 	//////////////////////
-	// TODO: UT
 	vint& Flip() {
 		for (auto& x : v) {
 			x = ~x;
@@ -160,12 +169,11 @@ public:
 		return ret.Flip();
 	}
 
-	// TODO: UT
 	vint& Negate() {
 		if constexpr (num_word == 1) {
 			v[0] = -v[0];
 		} else {
-			detail::twos_complement64(v[0], num_word);
+			detail::twos_complement64(v, num_word);
 		}
 		ClearUnusedBits();
 		return *this;
@@ -176,7 +184,6 @@ public:
 		return ret.Negate();
 	}
 
-	// TODO: UT
 	bool operator!() const {
 		for (auto &x: v) {
 			if (x) {
@@ -186,7 +193,6 @@ public:
 		return true;
 	}
 
-	// TODO: UT
 	explicit operator bool() const {
 		for (auto &x: v) {
 			if (x) {
@@ -196,39 +202,157 @@ public:
 		return false;
 	}
 
-	// TODO: UT
-	bool ReduceXor() const {
+	vint<false, 1> ReduceXor() const {
 		uint64_t ret = 0;
 		for (auto &x: v) {
-			ret ^= v;
+			ret ^= x;
 		}
-		return bool(detail::popcount64(ret) & 1);
+		return vint<false, 1>{detail::popcount64(ret) & 1};
 	}
 
-	bool ReduceOr() const {
-		return operator bool()();
+	vint<false, 1> ReduceOr() const {
+		return vint<false, 1>{operator bool()};
 	}
 
-	// TODO: UT
-	bool ReduceAnd() const {
-		if (v[num_word-1] != used_mask) {
-			return false;
-		}
-		if constexpr (is_multi_word) {
-			for (unsigned i = 0; i < num_word-1; ++i) {
-				if (v[i] != uint64_t(-1)) {
-					return false;
+	vint<false, 1> ReduceAnd() const {
+		// IIFE
+		auto ret = [this]() -> bool {
+			if (v[num_word-1] != used_mask) {
+				return false;
+			}
+			if constexpr (is_multi_word) {
+				for (unsigned i = 0; i < num_word-1; ++i) {
+					if (v[i] != uint64_t(-1)) {
+						return false;
+					}
 				}
 			}
-		}
-		return true;
+			return true;
+		}();
+		return vint<false, 1>{ret};
 	}
 
+	//////////////////////
+	// add/sub/mul/div assignment
+	// UT: vint_binary
+	//////////////////////
+	vint& operator+=(const vint& rhs) {
+		if constexpr (is_multi_word) {
+			unsigned char carry = 0;
+			for (unsigned i = 0; i < num_word; ++i) {
+				carry = detail::addcarry64(v[i], v[i], rhs.v[i], carry);
+			}
+		} else {
+			v[0] += rhs.v[0];
+		}
+		ClearUnusedBits();
+		return *this;
+	}
 
+	vint& operator-=(const vint& rhs) {
+		if constexpr (is_multi_word) {
+			unsigned char carry = 0;
+			for (unsigned i = 0; i < num_word; ++i) {
+				carry = detail::subborrow64(v[i], v[i], rhs.v[i], carry);
+			}
+		} else {
+			v[0] -= rhs.v[0];
+		}
+		ClearUnusedBits();
+		return *this;
+	}
+
+	vint& operator*=(const vint& rhs) {
+		if constexpr (is_multi_word) {
+			detail::MulWordU64(v, rhs.v, num_word);
+		} else {
+			v[0] = v[0] * rhs.v[0];
+		}
+		ClearUnusedBits();
+		return *this;
+	}
+
+	vint& operator+=(const stype rhs) {
+		if constexpr (is_multi_word) {
+			unsigned char carry = 0;
+			carry = detail::addcarry64(v[0], v[0], rhs, carry);
+			for (unsigned i = 1; i < num_word; ++i) {
+				carry = detail::addcarry64(v[i], v[i], 0, carry);
+			}
+		} else {
+			v[0] += rhs;
+		}
+		ClearUnusedBits();
+		return *this;
+	}
+
+	vint& operator-=(const stype rhs) {
+		if constexpr (is_multi_word) {
+			unsigned char carry = 0;
+			carry = detail::subborrow64(v[0], v[0], rhs, carry);
+			for (unsigned i = 1; i < num_word; ++i) {
+				carry = detail::subborrow64(v[i], v[i], 0, carry);
+			}
+		} else {
+			v[0] -= rhs;
+		}
+		ClearUnusedBits();
+		return *this;
+	}
+
+	vint& operator*=(const stype rhs) {
+		static_assert(num_word == 1, "Multiplication > 64b is not supported");
+		v[0] = v[0] * rhs;
+		ClearUnusedBits();
+		return *this;
+	}
+
+	//////////////////////
+	// bitwise assignment
+	//////////////////////
+	vint& operator&=(const vint& rhs) {
+		for (unsigned i = 0; i < num_word; ++i) {
+			v[i] &= rhs.v[i];
+		}
+		return *this;
+	}
+
+	vint& operator|=(const vint& rhs) {
+		for (unsigned i = 0; i < num_word; ++i) {
+			v[i] |= rhs.v[i];
+		}
+		return *this;
+	}
+
+	vint& operator^=(const vint& rhs) {
+		for (unsigned i = 0; i < num_word; ++i) {
+			v[i] ^= rhs.v[i];
+		}
+		return *this;
+	}
+
+	vint& operator&=(const stype rhs) {
+		v[0] &= rhs;
+		ClearUnusedBits();
+		return *this;
+	}
+
+	vint& operator|=(const stype rhs) {
+		v[0] |= rhs;
+		ClearUnusedBits();
+		return *this;
+	}
+
+	vint& operator^=(const stype rhs) {
+		v[0] ^= rhs;
+		ClearUnusedBits();
+		return *this;
+	}
+
+#if 0
 	//////////////////////
 	// comparison
 	//////////////////////
-#if 0
 	// compare() will return:
 	// 1: larger
 	// 0: must check further
@@ -302,120 +426,6 @@ public:
 	bool operator<(const stype rhs) const { return compare(rhs, is_signed) < 0; }
 	bool operator>=(const stype rhs) const { return compare(rhs, is_signed) >= 0; }
 	bool operator<=(const stype rhs) const { return compare(rhs, is_signed) <= 0; }
-
-	//////////////////////
-	// add/sub/mul/div assignment
-	//////////////////////
-	vint& operator+=(const vint& rhs) {
-		if constexpr (num_word == 1) {
-			v[0] += rhs.v[0];
-		} else {
-			unsigned char carry = 0;
-			for (unsigned i = 0; i < num_word; ++i) {
-				carry = detail::addcarry64(v[i], v[i], rhs.v[i], carry);
-			}
-		}
-		ClearUnusedBits();
-		return *this;
-	}
-
-	vint& operator-=(const vint& rhs) {
-		if constexpr (num_word == 1) {
-			v[0] -= rhs.v[0];
-		} else {
-			unsigned char carry = 0;
-			for (unsigned i = 0; i < num_word; ++i) {
-				carry = detail::subborrow64(v[i], v[i], rhs.v[i], carry);
-			}
-		}
-		ClearUnusedBits();
-		return *this;
-	}
-
-	vint& operator*=(const vint& rhs) {
-		static_assert(num_word == 1, "Multiplication > 64b is not supported");
-		// 1u to force integer promotion to unsigned type
-		v[0] = 1u * v[0] * rhs.v[0];
-		ClearUnusedBits();
-		return *this;
-	}
-
-	vint& operator+=(const stype rhs) {
-		if constexpr (num_word == 1) {
-			v[0] += rhs;
-		} else {
-			unsigned char carry = 0;
-			carry = detail::addcarry64(v[0], v[0], rhs, carry);
-			for (unsigned i = 1; i < num_word; ++i) {
-				carry = detail::addcarry64(v[i], v[i], 0, carry);
-			}
-		}
-		ClearUnusedBits();
-		return *this;
-	}
-
-	vint& operator-=(const stype rhs) {
-		if constexpr (num_word == 1) {
-			v[0] -= rhs;
-		} else {
-			unsigned char carry = 0;
-			carry = detail::subborrow64(v[0], v[0], rhs, carry);
-			for (unsigned i = 1; i < num_word; ++i) {
-				carry = detail::subborrow64(v[i], v[i], 0, carry);
-			}
-		}
-		ClearUnusedBits();
-		return *this;
-	}
-
-	vint& operator*=(const stype rhs) {
-		static_assert(num_word == 1, "Multiplication > 64b is not supported");
-		v[0] = v[0] * rhs;
-		ClearUnusedBits();
-		return *this;
-	}
-
-	//////////////////////
-	// bitwise assignment
-	//////////////////////
-	vint& operator&=(const vint& rhs) {
-		for (unsigned i = 0; i < num_word; ++i) {
-			v[i] &= rhs.v[i];
-		}
-		return *this;
-	}
-
-	vint& operator|=(const vint& rhs) {
-		for (unsigned i = 0; i < num_word; ++i) {
-			v[i] |= rhs.v[i];
-		}
-		return *this;
-	}
-
-	vint& operator^=(const vint& rhs) {
-		for (unsigned i = 0; i < num_word; ++i) {
-			v[i] ^= rhs.v[i];
-		}
-		return *this;
-	}
-
-	vint& operator&=(const stype rhs) {
-		v[0] &= rhs;
-		ClearUnusedBits();
-		return *this;
-	}
-
-	vint& operator|=(const stype rhs) {
-		v[0] |= rhs;
-		ClearUnusedBits();
-		return *this;
-	}
-
-	vint& operator^=(const stype rhs) {
-		v[0] ^= rhs;
-		ClearUnusedBits();
-		return *this;
-	}
 
 	// explicit cast
 	template<bool is_signed_dst, unsigned num_bit_dst>
@@ -543,7 +553,7 @@ public:
 	}
 
 	//////////////////////
-	// derived operators
+	// delagated operators
 	//////////////////////
 	vint operator+(const vint& rhs) const { vint ret = *this; ret += rhs; return ret; }
 	vint operator-(const vint& rhs) const { vint ret = *this; ret -= rhs; return ret; }

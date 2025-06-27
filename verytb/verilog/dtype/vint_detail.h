@@ -93,5 +93,6 @@ inline void twos_complement64(uint64_t* v, unsigned num_word) {
 // This is not necessary a public API, but I put this here for testing
 std::string SanitizeStringInteger_(const std::string_view s);
 bool ParseStringAsU64(uint64_t* ptr, unsigned num_bit, unsigned base, const std::string_view s);
+void MulWordU64(uint64_t* v, const uint64_t* rhs, unsigned num_word);
 
 } // namespace verilog::detail

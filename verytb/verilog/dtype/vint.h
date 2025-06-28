@@ -71,6 +71,18 @@ public:
 		v[num_word-1] &= used_mask;
 	}
 
+	void SetBitFromPosition(const unsigned rhs) {
+		const unsigned num_remaining = num_bit - rhs;
+		const unsigned signext_from_word = detail::num_bit2num_word(num_remaining);
+		const unsigned used_bit_after_shift = num_remaining % bit_per_word;
+		// v[signext_from_word-1] |= stype(-2) << used_bit_after_shift_minus_one;
+		if constexpr (num_word > 1) {
+			std::fill(v+signext_from_word, v+num_word, stype(-1));
+		}
+		ClearUnusedBits();
+	}
+
+
 	//////////////////////
 	// extra constructors (implemented by assign())
 	// UT: vint_ctor
@@ -309,6 +321,7 @@ public:
 
 	//////////////////////
 	// bitwise assignment
+	// UT: vint_binary
 	//////////////////////
 	vint& operator&=(const vint& rhs) {
 		for (unsigned i = 0; i < num_word; ++i) {
@@ -349,7 +362,109 @@ public:
 		return *this;
 	}
 
+	//////////////////////
+	// slicing (bit)
+	// UT: TODO
+	//////////////////////
+	bool GetBit(unsigned pos) const {
+		assert(pos < num_bit);
+		const unsigned shamt =  pos % bit_per_word;
+		const unsigned lsb_word = pos / bit_per_word;
+		return bool((v[lsb_word] >> shamt) & 1u);
+	}
+
+	void SetBit(unsigned pos, bool value) {
+		assert(pos < num_bit);
+		const unsigned shamt =  pos % bit_per_word;
+		const unsigned lsb_word = pos / bit_per_word;
+		const stype bmask = stype(1) << shamt;
+		v[lsb_word] &= ~bmask;
+		if (value) {
+			v[lsb_word] |= bmask;
+		}
+	}
+
+	template<bool is_signed>
+	void SetBit(unsigned pos, vint<is_signed, 1u> value) {
+		assert(pos < num_bit);
+		SetBit(pos, bool(value));
+	}
+
+	bool GetBitMSB() const { return GetBit(num_bit - 1); }
+	bool GetBitLSB() const { return GetBit(0); }
+	bool IsNegative() const {
+		if constexpr (is_signed) {
+			return GetBitMSB();
+		} else {
+			return false;
+		}
+	}
+	void SetBitMSB(unsigned pos, bool value) { SetBit(num_bit - 1, value); }
+	void SetBitLSB(unsigned pos, bool value) { SetBit(0, value); }
+	template<bool is_signed> void SetBitMSB(unsigned pos, vint<is_signed, 1u> value) { SetBit(num_bit - 1, value); }
+	template<bool is_signed> void SetBitLSB(unsigned pos, vint<is_signed, 1u> value) { SetBit(0, value); }
+
+	//////////////////////
+	// slicing (word)
+	// UT: TODO
+	//////////////////////
 #if 0
+	template<unsigned num_bit_slice>
+	vint<false, num_bit_slice> GetSlice(unsigned pos) const {
+	}
+
+	template<unsigned lsb_pos, unsigned num_bit_slice>
+	void ClearSlice() {
+		static_assert(lsb_pos + num_bit_slice <= num_bit);
+		constexpr unsigned msb_pos = lsb_pos + num_bit_slice - 1;
+		constexpr unsigned lsb_word_slice = lsb_pos / bit_per_word;
+		constexpr unsigned msb_word_slice = msb_pos / bit_per_word;
+		constexpr unsigned unused_lsb_slice = lsb_pos % bit_per_word;
+		constexpr unsigned unused_msb_slice = bit_per_word - 1 - (msb_pos % bit_per_word);
+		// create somethig like 0b1111000 and 0b00001111
+		// TODO: any clear way to prevent gcc warning elegantly?
+		constexpr stype lsb_mask_slice = (stype(-1) >> unused_lsb_slice << unused_lsb_slice) ^ stype(-1);
+		constexpr stype msb_mask_slice = (stype(-1) >> unused_msb_slice) ^ stype(-1);
+		if constexpr (lsb_word_slice == msb_word_slice) {
+			v[lsb_word_slice] &= lsb_mask_slice | msb_mask_slice;
+		} else {
+			v[lsb_word_slice] &= lsb_mask_slice;
+			for (unsigned i = lsb_word_slice+1; i < msb_word_slice; ++i) {
+				v[i] = 0;
+			}
+			v[msb_word_slice] &= msb_mask_slice;
+		}
+	}
+
+	template<unsigned lsb_pos, unsigned num_bit_slice>
+	void SetSliceUnsafe(const vint<false, num_bit_slice>& sl) {
+		static_assert(lsb_pos + num_bit_slice <= num_bit);
+		constexpr unsigned msb_pos = lsb_pos + num_bit_slice - 1;
+		constexpr unsigned lsb_word_slice = lsb_pos / bit_per_word;
+		constexpr unsigned msb_word_slice = msb_pos / bit_per_word;
+		constexpr unsigned num_word_slice = detail::num_bit2num_word(num_bit_slice);
+		constexpr unsigned unused_lsb_slice = lsb_pos % bit_per_word;
+		if constexpr (unused_lsb_slice == 0) {
+			for (unsigned i = 0; i < num_word_slice; ++i) {
+				v[lsb_word_slice+i] |= sl.v[i];
+			}
+		} else {
+			v[lsb_word_slice] |= stype(sl.v[0]) << unused_lsb_slice;
+			for (unsigned i = 1; i < num_word_slice; ++i) {
+				v[lsb_word_slice+i] |= detail::shiftleft128(sl.v[i], sl.v[i-1], unused_lsb_slice);
+			}
+			if constexpr (msb_word_slice == lsb_word_slice+num_word_slice) {
+				v[msb_word_slice] |= stype(sl.v[num_word_slice-1]) >> (bit_per_word - unused_lsb_slice);
+			}
+		}
+	}
+
+	template<unsigned lsb_pos, unsigned num_bit_slice>
+	void SetSlice(const vint<false, num_bit_slice>& sl) {
+		ClearSlice<lsb_pos, num_bit_slice>();
+		SetSliceUnsafe<lsb_pos>(sl);
+	}
+
 	//////////////////////
 	// comparison
 	//////////////////////
@@ -357,6 +472,7 @@ public:
 	// 1: larger
 	// 0: must check further
 	// -1: smaller
+private:
 	int compare_msb(stype rhs, bool sign_mode) const {
 		stype lhs = v[num_word-1];
 		if (sign_mode) {
@@ -411,11 +527,7 @@ public:
 		return 0;
 	}
 
-	int ucompare(const vint& rhs) const { return compare(rhs, false); }
-	int ucompare(const stype rhs) const { return compare(rhs, false); }
-	int scompare(const vint& rhs) const { return compare(rhs, true); }
-	int scompare(const stype rhs) const { return compare(rhs, true); }
-
+public:
 	bool operator==(const vint& rhs) const { return compare(rhs, is_signed) == 0; }
 	bool operator>(const vint& rhs) const { return compare(rhs, is_signed) > 0; }
 	bool operator<(const vint& rhs) const { return compare(rhs, is_signed) < 0; }
@@ -427,52 +539,24 @@ public:
 	bool operator>=(const stype rhs) const { return compare(rhs, is_signed) >= 0; }
 	bool operator<=(const stype rhs) const { return compare(rhs, is_signed) <= 0; }
 
-	// explicit cast
+	//////////////////////
+	// cast to other types
+	//////////////////////
 	template<bool is_signed_dst, unsigned num_bit_dst>
-	explicit operator vint<is_signed_dst, num_bit_dst>() const {
-		vint<is_signed_dst, num_bit_dst> dst;
-		typedef decltype(dst) dst_t;
-		const bool is_neg = Bit(num_bit-1u);
-		auto src_beg = std::begin(v);
-		auto dst_beg = std::begin(dst.v);
+	void CastTo(vint<is_signed_dst, num_bit_dst>& rhs) const {
+		typedef vint<is_signed_dst, num_bit_dst> dst_t;
 		constexpr size_t num_word_min = std::min(dst_t::num_word, num_word);
-		std::copy_n(src_beg, num_word_min, dst_beg);
-		if constexpr (num_bit_dst > num_bit) {
-			constexpr unsigned bit_shifted =  num_bit_dst - num_bit;
-			if (is_neg and dst_t::is_signed and is_signed) {
-				dst.signext_after_shiftr(bit_shifted);
-			} else {
-				dst.clear_after_shiftr(bit_shifted);
-			}
-		} else if constexpr (num_bit_dst < num_bit) {
-			dst.ClearUnusedBits();
-		}
-		return dst;
-	}
-
-	//////////////////////
-	// shift assignment
-	//////////////////////
-	void signext_after_shiftr(const unsigned rhs) {
-		const unsigned num_remaining = num_bit - rhs;
-		const unsigned signext_from_word = detail::num_bit2num_word(num_remaining);
-		const unsigned used_bit_after_shift_minus_one = (num_remaining-1u) % bit_per_word;
-		if constexpr (num_word > 1) {
-			assert(signext_from_word > 0); // since rhs != 0, this shall not fail
-			std::fill(v+signext_from_word, v+num_word, stype(-1));
-		}
-		v[signext_from_word-1] |= stype(-2) << used_bit_after_shift_minus_one;
-		ClearUnusedBits();
-	}
-
-	void clear_after_shiftr(const unsigned rhs) {
-		if constexpr (num_word > 1) {
-			const unsigned num_remaining = num_bit - rhs;
-			const unsigned signext_from_word = detail::num_bit2num_word(num_remaining);
-			const unsigned unused_bit_after_shift = (-num_remaining) % bit_per_word;
-			assert(signext_from_word > 0); // since rhs != 0, this shall not fail
-			std::fill(v+signext_from_word, v+num_word, stype(0));
-			v[signext_from_word-1] &= stype(-1) >> unused_bit_after_shift;
+		std::copy_n(v, num_word_min, rhs.v);
+		if (
+			// both are signed & the dst is larger than src & need sign extension
+			num_bit_dst > num_bit and
+			is_signed_dst and is_signed and
+			IsNegative()
+		) {
+			constexpr unsigned bit_shifted =  num_bit_rhs - num_bit;
+			rhs.SignExtendFromPosition(bit_shifted);
+		} else if constexpr (num_bit_rhs < num_bit) {
+			rhs.ClearUnusedBits();
 		}
 	}
 
@@ -501,9 +585,9 @@ public:
 			}
 		}
 		if (do_sign_extension) {
-			signext_after_shiftr(rhs);
+			SignExtendFromPosition(rhs);
 		} else {
-			clear_after_shiftr(rhs);
+			ClearBit(rhs);
 		}
 		return *this;
 	}
@@ -602,91 +686,6 @@ public:
 		return *this;
 	}
 
-	//////////////////////
-	// slice (bit)
-	//////////////////////
-	bool GetBit(unsigned pos) const {
-		assert(pos < num_bit);
-		const unsigned shamt =  pos % bit_per_word;
-		const unsigned lsb_word = pos / bit_per_word;
-		return bool((v[lsb_word] >> shamt) & 1u);
-	}
-
-	void SetBit(unsigned pos, bool value) {
-		assert(pos < num_bit);
-		const unsigned shamt =  pos % bit_per_word;
-		const unsigned lsb_word = pos / bit_per_word;
-		const stype bmask = stype(1) << shamt;
-		v[lsb_word] &= ~bmask;
-		if (value) {
-			v[lsb_word] |= bmask;
-		}
-	}
-
-	template<bool is_signed>
-	void SetBit(unsigned pos, vint<is_signed, 1u> value) {
-		assert(pos < num_bit);
-		SetBit(pos, bool(value));
-	}
-
-	//////////////////////
-	// slice (word)
-	//////////////////////
-	template<unsigned num_bit_slice>
-	vint<false, num_bit_slice> GetSlice(unsigned pos) const {
-	}
-
-	template<unsigned lsb_pos, unsigned num_bit_slice>
-	void ClearSlice() {
-		static_assert(lsb_pos + num_bit_slice <= num_bit);
-		constexpr unsigned msb_pos = lsb_pos + num_bit_slice - 1;
-		constexpr unsigned lsb_word_slice = lsb_pos / bit_per_word;
-		constexpr unsigned msb_word_slice = msb_pos / bit_per_word;
-		constexpr unsigned unused_lsb_slice = lsb_pos % bit_per_word;
-		constexpr unsigned unused_msb_slice = bit_per_word - 1 - (msb_pos % bit_per_word);
-		// create somethig like 0b1111000 and 0b00001111
-		// TODO: any clear way to prevent gcc warning elegantly?
-		constexpr stype lsb_mask_slice = (stype(-1) >> unused_lsb_slice << unused_lsb_slice) ^ stype(-1);
-		constexpr stype msb_mask_slice = (stype(-1) >> unused_msb_slice) ^ stype(-1);
-		if constexpr (lsb_word_slice == msb_word_slice) {
-			v[lsb_word_slice] &= lsb_mask_slice | msb_mask_slice;
-		} else {
-			v[lsb_word_slice] &= lsb_mask_slice;
-			for (unsigned i = lsb_word_slice+1; i < msb_word_slice; ++i) {
-				v[i] = 0;
-			}
-			v[msb_word_slice] &= msb_mask_slice;
-		}
-	}
-
-	template<unsigned lsb_pos, unsigned num_bit_slice>
-	void WriteSliceUnsafe(const vint<false, num_bit_slice>& sl) {
-		static_assert(lsb_pos + num_bit_slice <= num_bit);
-		constexpr unsigned msb_pos = lsb_pos + num_bit_slice - 1;
-		constexpr unsigned lsb_word_slice = lsb_pos / bit_per_word;
-		constexpr unsigned msb_word_slice = msb_pos / bit_per_word;
-		constexpr unsigned num_word_slice = detail::num_bit2num_word(num_bit_slice);
-		constexpr unsigned unused_lsb_slice = lsb_pos % bit_per_word;
-		if constexpr (unused_lsb_slice == 0) {
-			for (unsigned i = 0; i < num_word_slice; ++i) {
-				v[lsb_word_slice+i] |= sl.v[i];
-			}
-		} else {
-			v[lsb_word_slice] |= stype(sl.v[0]) << unused_lsb_slice;
-			for (unsigned i = 1; i < num_word_slice; ++i) {
-				v[lsb_word_slice+i] |= detail::shiftleft128(sl.v[i], sl.v[i-1], unused_lsb_slice);
-			}
-			if constexpr (msb_word_slice == lsb_word_slice+num_word_slice) {
-				v[msb_word_slice] |= stype(sl.v[num_word_slice-1]) >> (bit_per_word - unused_lsb_slice);
-			}
-		}
-	}
-
-	template<unsigned lsb_pos, unsigned num_bit_slice>
-	void SetSlice(const vint<false, num_bit_slice>& sl) {
-		ClearSlice<lsb_pos, num_bit_slice>();
-		WriteSliceUnsafe<lsb_pos>(sl);
-	}
 
 	//////////////////////
 	// others
